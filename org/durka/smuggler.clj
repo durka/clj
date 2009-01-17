@@ -144,7 +144,6 @@
   [file]
   (filetype? (.getCanonicalPath file) "jar"))
 
-(def class-version (int (Float/parseFloat (System/getProperty "java.class.version"))))
 (def spec-version (System/getProperty "java.specification.version"))
 
 (defmulti classfile? class)
