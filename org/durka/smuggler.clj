@@ -1,5 +1,5 @@
 (ns org.durka.smuggler
-  (:use 'clojure.contrib.seq-utils)
+  (:use clojure.contrib.seq-utils)
   (import [java.io File FileInputStream DataInputStream]
           [java.util.jar JarFile JarEntry JarFile$JarFileEntry]
           [javassist.bytecode ClassFile]
