@@ -2,6 +2,7 @@
 ;  (:use clj-http-client.core)
   (:use clojure.contrib.seq-utils)
   (:use clojure.contrib.duck-streams)
+  (:use clojure.contrib.str-utils)
   (:require (org.danlarkin [json :as json])))
 
 (def api-key {:campaign   "e19c3c51ad52a90dcb3da6ae991e318e:18:57691504"
@@ -20,5 +21,9 @@
                                   (interpose "&"
                                              (map #(str (key %) "=" (val %))
                                                   (conj {'api-key kee} params)))])))]
-    (json/decode-from-reader nyt)))
-
+    (let [data (json/decode-from-reader nyt)]
+      (if (= "OK" (:status data))
+        (with-meta (:results data) {:copyright (:copyright data)})
+        ;#^{:copyright (:copyright data)} (:results data)
+        (throw (Exception. (str "New York Times returned status " (:status data)
+                                ": " (str-join " " (:errors data)))))))))
