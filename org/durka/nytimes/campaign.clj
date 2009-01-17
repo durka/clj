@@ -5,6 +5,12 @@
 
 (def *api-key* (:campaign api-key))
 
+(defn mapmap
+  "Map with separate fns for the keys vals of a map(s). Colls must be maps."
+  [kf vf & colls]
+  (zipmap (apply map kf (map keys colls))
+          (apply map vf (map vals colls))))
+
 (defn prelude
   [type year]
   ["svc" "elections" "us" *version* type year "finances"])
@@ -38,8 +44,8 @@
            *api-key*))
 
 (defn donor-search
-  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100, so evluation will occur when the 100n+1'th entry is accessed. Restrict by zip code, last name, and/or first name."
+  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100, so evluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"}."
   [type year params]
   (request (concat (prelude type year) ["contributions" "donorsearch"])
-           (mapkeys #(.sym %) params)
+           (mapmap #(.sym %) identity params)
            *api-key*))
