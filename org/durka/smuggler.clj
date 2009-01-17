@@ -219,3 +219,10 @@
   (send-off (add-watcher (agent nil)
                          :send (agent nil) (ignore #(.. Toolkit getDefaultToolkit beep))) ;construct an agent with a watcher that just beeps
             (ignore #(time (make-index)))))
+
+(defn lookup-re
+  "Look up a classname by regular expression."
+  [db re-string-or-pattern]
+  (let [re (re-pattern re-string-or-pattern)]
+    (vals (filter #(re-find (re-matcher re (key %)))
+                  db))))
