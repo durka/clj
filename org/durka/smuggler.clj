@@ -30,7 +30,7 @@
     (catch Throwable
       default)))
 
-(defn get-referenced-classes
+(defn get-referenced-classes ;;OLD
   "Find all the classes that a piece of code references. Pass code as a list of top-level forms, not a string."
   [ast]
   (filter #(and (symbol? %)
@@ -38,7 +38,7 @@
                 (= \. (last  (.toString %))))
           (flatten ast)))
 
-(defn get-unknown-symbols
+(defn get-unknown-symbols ;;OLD
   [ast]
   (filter #(and (symbol? %) (not (special-form-anchor %))
                 (not (muzzle nil resolve %)))
@@ -67,7 +67,7 @@
      (refer 'clojure.core)
      *ns*))
 
-(defmulti fix-unresolvable (fn [t v n a] t))
+(defmulti fix-unresolvable (fn [t v n a] t)) ;given a namespace and an abstract syntax tree, fix an unresolvable symbol/classname. The meaning of the code may be changed, but subsequent calls to find-first-unresolvable on the namespace/AST pair should not pick up the symbol/classname.
 (defmethod fix-unresolvable "symbol"
   [type name nmspc ast]
   (def-ns nmspc name (str (gensym)))
@@ -79,6 +79,7 @@
    (replace-in {name 'do, (symbol (str name ".")) 'do} ast)]) ;this takes care of Classname. and (new Classname) forms
 
 (defn find-first-unresolvable
+  "Analyze an abstract syntax tree in a given namespace or a new one, returning the name of the first unresolvable symbol/classname."
   ([ast] (find-first-unresolvable ast (setup-ns (gensym))))
   ([ast new-ns]
    (binding [*ns* new-ns]
@@ -155,7 +156,7 @@
   [je]
   (and
     (filetype? (.getName je) "class")
-    (try ; get the specification version from the jar file manifest and compare to the current spec-version. If there is no manifest or no Specification-Version attribute, an NPE will be thrown and the check will be skipped
+    (try ; get the specification version from the jar file manifest and compare to the current spec-version. If there is no manifest or no Specification-Version attribute, an NPE will be thrown and the check will be skipped (assumed successful)
       (.. (JarFile. (.getComment je))
         getManifest
         getMainAttributes
@@ -165,6 +166,7 @@
         spec-version))))
 
 (defn path-tree
+  "Scan a directory, recursing into both subdirectories (but avoiding symlink loops) and jar archives, returning a list of files. Real files are given as Files with absolute paths, and files inside archives are given as JarEntries, with the containing JarFile as comment."
   [dir]
   (let [hist (atom #{})]
     (tree-seq

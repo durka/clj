@@ -44,7 +44,7 @@
            *api-key*))
 
 (defn donor-search
-  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100, so evluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"}."
+  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100, so evluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"})."
   [type year params]
   (request (concat (prelude type year) ["contributions" "donorsearch"])
            (mapmap #(.sym %) identity params)
