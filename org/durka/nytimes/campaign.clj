@@ -1,5 +1,7 @@
 (ns org.durka.nytimes.campaign
-  (:use org.durka.nytimes.common))
+  (:use org.durka.nytimes.common)
+  (:use clojure.contrib.seq-utils)
+  (:import [java.io FileNotFoundException]))
 
 (def *version* "v2")
 
@@ -44,8 +46,15 @@
            *api-key*))
 
 (defn donor-search
-  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100, so evluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"})."
-  [type year params]
-  (request (concat (prelude type year) ["contributions" "donorsearch"])
-           (mapmap #(.sym %) identity params)
-           *api-key*))
+  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100 (but a flattened seq is returned by this function), so evaluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"}). If no results, returns nil."
+  ([type year params] (donor-search type year params 0))
+  ([type year params start-page]
+   (let [at (fn at [offset]
+              (try
+                (let [page (request (concat (prelude type year) ["contributions" "donorsearch"])
+                                    (mapmap #(.sym %) identity (assoc params :offset (* 100 offset)))
+                                    *api-key*)]
+                  (lazy-cat page (at (inc offset))))
+                (catch FileNotFoundException fnfe nil)))]
+     (at start-page))))
+
