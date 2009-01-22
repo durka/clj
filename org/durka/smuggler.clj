@@ -1,3 +1,17 @@
+(comment
+  This library contains two different things: a (rather feeble) attempt to find all the unresolvable classes in a Clojure source file. This is incomplete, but it revolves around find-first-unresolvable and fix-unresolvable. The second, and probably more useful, part is a way to build an index of all Java classes on the classpath, and look them up by unqualified name (so you can find out what to import). You have to create the index, which is pretty time- and CPU-consuming. The main function is make-index, which returns the database. For convenience agent-make-index is provided, which dispatches an agent to run make-index, and beeps when the agent finishes (at which point @agt is the database).
+  => (def agt (agent-make-index))
+  => (.getQueueCount agt)
+  1 ;; eventually this will be zero
+  => (agent-errors agt)
+  ;; if all goes well, this will remain nil
+  ;; *time goes by*
+  ;; *BEEP*
+  => (def db @agt) ;; don't evaluate @agt directly at the repl -- it is enormous! 
+  => (db "Ref") ;; lookup by unqualified name
+  => (lookup-re db #"File.*Exception$") ;; lookup by regex of unqualified name
+  CPU usage will spike while the agent is working, and will fall off a cliff again when it beeps. If the CPU usage falls off a cliff and there is no beep, an exception probably occurred. getQueueCount will still return 1, but agent-errors will give something ugly. A known issue so far (there are undoubtedly many unknown issues) is that broken symlinks on the classpath will cause exceptions (note: recursive symlinks are not a problem).)
+
 (ns org.durka.smuggler
   (:use clojure.contrib.seq-utils)
   (import [java.io File FileInputStream DataInputStream]
