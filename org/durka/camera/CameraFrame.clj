@@ -1,8 +1,9 @@
 (ns org.durka.camera.frame
   (:use clojure.contrib.stacktrace))
 
-(import '[javax.swing JFrame JLabel ImageIcon])
-(import '[java.awt Toolkit Color Component Graphics])
+(import '[java.io FileOutputStream])
+(import '[javax.swing JFrame JButton AbstractAction])
+(import '[java.awt Toolkit Color Component Graphics GridLayout])
 (import '[java.awt.image BufferedImage DirectColorModel Raster DataBufferInt FilteredImageSource RGBImageFilter])
 (import '[quicktime QTSession])
 (QTSession/open) ; have to do this before importing QDGraphics
@@ -11,6 +12,9 @@
 (import '[quicktime.qd QDGraphics QDRect])
 (import '[quicktime.std StdQTConstants])
 (import '[quicktime.util RawEncodedImage])
+(import '[quicktime.io QTFile])
+
+(set! *warn-on-reflection* true)
 
 (def *width* (ref 0))
 (def *height* (ref 0))
@@ -50,33 +54,46 @@
                                                                  nil))
                                       false
                                     nil))
-          comp (proxy [Component] []
-                 (paint [g]
-                        (proxy-super paint g)
-                        (let [mx (atom 0)
-                              my (atom 0)
-                              mr (atom 0)]
-                          (doto g
-                            (.drawImage (.. Toolkit
-                                          getDefaultToolkit
-                                          (createImage
-                                            (FilteredImageSource.
-                                              (.getSource img)
-                                              (proxy [RGBImageFilter] []
-                                                (filterRGB [x y rgb]
-                                                           (let [r (bit-and rgb 0xffff0000)]
-                                                             (when (> r @mr)
-                                                               (swap! mx (fn [_] (do x)))
-                                                               (swap! my (fn [_] (do y)))
-                                                               (swap! mr (fn [_] (do r))))
-                                                             rgb))))))
-                                        0 0 this)
-                            (.setColor Color/RED)
-                            (.drawLine @mx 0 @mx @*height*)
-                            (.drawLine 0 @my @*width* @my)))))
+          component (proxy [Component] []
+                      (paint [g]
+                             (proxy-super paint g)
+                             (with-local-vars [mx 0
+                                               my 0
+                                               mr [0 0 0]]
+                               (doto g
+                                 (.drawImage (.. Toolkit
+                                               getDefaultToolkit
+                                               (createImage
+                                                 (FilteredImageSource.
+                                                   (.getSource img)
+                                                   (proxy [RGBImageFilter] []
+                                                     (filterRGB [x y rgb]
+                                                                (let [irgb (int rgb)
+                                                                      r (bit-shift-right (bit-and irgb 0x00ff0000) 16)
+                                                                      g (bit-shift-right (bit-and irgb 0x0000ff00) 8)
+                                                                      b (bit-and irgb 0x000000ff)]
+                                                                  (when (and (when-not (zero? g) (> (/ r g) 1.25))
+                                                                             (when-not (zero? b) (>  (/ r b) 1.25))
+                                                                             (> r (first @mr)))
+                                                                    (var-set mx x)
+                                                                    (var-set my y)
+                                                                    (var-set mr [r g b (/ r g) (/ r b)
+                                                                                   ]))
+                                                                  rgb))))))
+                                             0 0 this)
+                                 (.setColor Color/RED)
+                                 (.drawLine @mx 0 @mx @*height*)
+                                 (.drawLine 0 @my @*width* @my))
+                               (prn (Math/sqrt (+ (* @mx @mx) (* @my @my)))
+                                    (map #(Double/toString %) @mr))
+                               )))
           frame (doto (JFrame.)
-                  (.setSize @*width* @*height*)
-                  (.add comp))
+                  (.setSize @*width* (+ @*height* 400))
+                  (.setLayout (GridLayout. 2 1))
+                  (.add component)
+                  (.add (JButton. (proxy [AbstractAction] ["Stop"]
+                                    (actionPerformed [evt]
+                                                     (.stop sg))))))
           data-proc (let [raw-data (make-array Byte/TYPE (QTImage/getMaxCompressionSize
                                                            world
                                                            (.getBounds world)
@@ -88,7 +105,6 @@
                           frame-count (atom 0)]
                       (proxy [SGDataProc] []
                           (execute [chan data offset ctrl-info start-time type]
-                                   (prn (swap! frame-count inc) (System/currentTimeMillis))
                                    (if (instance? SGVideoChannel chan)
                                      (try
                                        (let [desc (.getImageDescription vc)
@@ -96,6 +112,8 @@
                                                                                (.getSize data)))
                                              raw-image (RawEncodedImage. raw-data)]
                                          (.copyToArray data 0 raw-data 0 (.getSize data))
+                                         ;(aset raw-data (* 50 50) (byte 3))
+                                         ;(.copyFromArray data 0 raw-data 0 (count raw-data))
                                          (if @ds
                                            (.decompressFrameS @ds
                                                               raw-image
@@ -114,14 +132,15 @@
                                                                             pixel-data-array
                                                                             0
                                                                             pixel-data-array-size))
-                                         (.repaint comp)
+                                         (.repaint component)
                                          0)
                                        (catch Exception _ 1))
                                      1))))]
       (doto sg
         (.setDataProc data-proc)
-        (.setDataOutput nil StdQTConstants/seqGrabDontMakeMovie)
         (.prepare false true)
+        ;(.startPreview)
+        (.setDataOutput nil StdQTConstants/seqGrabDontMakeMovie)
         (.startRecord))
       (.start (Thread. (proxy [Runnable] []
                          (run []
@@ -132,7 +151,7 @@
                                     (.update nil))
                                   (recur))
                                 (catch Exception e
-                                  (prn "Exception in infinite loop!")
+                                  (prn "Exception in infinite loop!" e)
                                   (print-stack-trace e)))))))
       frame)
     (catch Throwable tr
