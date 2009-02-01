@@ -46,15 +46,17 @@
            *api-key*))
 
 (defn donor-search
-  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100 (but a flattened seq is returned by this function), so evaluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"}). If no results, returns nil."
+  "Lazy seq of the results of searching for donors -- the server returns results in pages of 100 (but a flattened seq is returned by this function), so evaluation will occur when the 100n+1'th entry is accessed. Restrict by at least one of zip code, last name, first name (in a map like {:lname \"smith\" :fname \"john\" :zip \"11111\"}). If no results, returns nil. If you don't care about the first 100n entries, then pass n as the start-page. Then the 100n+1'th entry will be the first element in the returned seq."
   ([type year params] (donor-search type year params 0))
   ([type year params start-page]
    (let [at (fn at [offset]
               (try
                 (let [page (request (concat (prelude type year) ["contributions" "donorsearch"])
-                                    (mapmap #(.sym %) identity (assoc params :offset (* 100 offset)))
+                                    (mapmap #(.sym %) identity ;; strip the leading : from map keys
+                                            (assoc params :offset (* 100 offset)))
                                     *api-key*)]
-                  (lazy-cat page (at (inc offset))))
-                (catch FileNotFoundException fnfe nil)))]
+                  (lazy-cat page (at (inc offset)))) ;;when there are no more pages, the call to request within this call to at will die with an FNFE, preventing lazy-cat from being called any more
+                (catch FileNotFoundException fnfe
+                  nil)))]
      (at start-page))))
 
