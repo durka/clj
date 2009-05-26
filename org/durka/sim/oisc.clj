@@ -1,5 +1,6 @@
 (ns org.durka.sim.oisc
-  (:use clojure.contrib.str-utils))
+  (:use clojure.contrib.str-utils)
+  (:import [clojure.lang Keyword]))
 
 (defn subleq
   "Evalutes a subleq instruction, given the current state of the memory, the memory locations marked as special -in- and -out-, the registers (currently just an instruction pointer :ip), and (optionally) the arguments to subleq. Returns the new state of the memory and the registers."
@@ -47,67 +48,69 @@
                 regs (dissoc regs :in :out)]
           (recur mem regs output)))))))
 
-(defn first-pass
-  "First pass of assembler. Takes a seq of lines and, expands macros, counts out labels. Returns a list of integers/labels/expressions and a map of labels to positions."
+(defn tokenize
+  "Zeroth pass of assembler. Takes a seq of lines and converts it into a lazy vector of vectors of symbols/lists/keywords. Strips out comments."
   [lines]
-  (loop [lines (remove empty? (map #(.trim %) lines))
+  (map #(read-string (str \[ % \]))
+       (remove empty? (map (comp #(let [i (.indexOf % "#")] ;strip comments
+                                    (if (not= i -1)
+                                      (.substring % 0 i)
+                                      %))
+                                 #(.trim %))
+                           lines))))
+
+(defn first-pass
+  "First pass of assembler. Takes a seq of vectors of tokens and, expanding macros, counts out labels. Returns a list of integers/labels/expressions and a map of labels to positions."
+  [lines]
+  (loop [lines lines
          code ()
          toc {}
          macros {}
          i 0]
     (if (seq lines)
-      (condp = (ffirst lines)
-        \= #_"equality" (recur (next lines)
-                               code
-                               (let [remainder (.substring (first lines) 2)
-                                     position (.indexOf remainder (int \space))]
-                                 (assoc toc
-                                        (read-string (.substring remainder 0 position))
-                                        (read-string (.substring remainder (inc position)))))
-                               macros
-                               i)
-        \. #_"literal" (let [fixed (re-gsub #"'([^']*)'"
-                                            (fn [[m $1]]
-                                              (apply str (interpose " "
-                                                                    (map #(str \\ %) $1))))
-                                            (first lines))
-                             stuff (read-string (str \( (.substring fixed 2) \)))]
-                         (recur (next lines)
-                                (concat code stuff)
-                                toc
-                                macros
-                                (+ i (count stuff))))
-        \+ #_"defmacro" (let [definition (take-while #(not= \- (first %)) lines)
-                              prog (next (drop-while #(not= \- (first %)) lines))
-                              [macro & args] (read-string (str \( definition \)))]
-                          (recur prog
-                                 code
-                                 toc
-                                 (assoc macros
-                                        macro {:args args, :code (next definition)})
-                                 i))
-        \> #_"call macro" (let [tokens (read-string (str \( (.substring (first lines) 1) \)))
-                                macro (macros (first tokens))
-                                args (next tokens)
-                                expansion (replace (zipmap (:args macro) args) (:code macro))]
+      (condp #((first %1) (second %1) %2) (ffirst lines)
+        [= '=] #_"equality" (recur (next lines)
+                                  code
+                                  (assoc toc
+                                         (second (first lines))
+                                         (last (first lines)))
+                                  macros
+                                  i)
+        [= '.] #_"literal" (let [stuff (mapcat #(if (string? %)
+                                                 %
+                                                 (list %))
+                                              (next (first lines)))]
                             (recur (next lines)
-                                   (concat code expansion)
+                                   (concat code stuff)
                                    toc
                                    macros
-                                   (+ i (count expansion))))
-        \: #_"label" (recur (next lines)
-                            code
-                            (assoc toc (read-string (.substring (first lines) 1)) i)
-                            macros
-                            i)
-        \# #_"comment" (recur (next lines)
-                              code
-                              toc
-                              macros
-                              i)
+                                   (+ i (count stuff))))
+        [= '+] #_"defmacro" (let [definition (take-while #(not= - (first %)) lines)
+                                 prog (next (drop-while #(not= - (first %)) lines))
+                                 [_ macro & args] definition]
+                             (recur prog
+                                    code
+                                    toc
+                                    (assoc macros
+                                           macro {:args args, :code (next definition)})
+                                    i))
+        [= '>] #_"call macro" (let [tokens (next (first lines))
+                                   macro (macros (first tokens))
+                                   args (next tokens)
+                                   expansion (replace (zipmap (:args macro) args) (:code macro))]
+                               (recur (next lines)
+                                      (concat code expansion)
+                                      toc
+                                      macros
+                                      (+ i (count expansion))))
+        [instance? Keyword] #_"label" (recur (next lines)
+                                             code
+                                             (assoc toc (.sym (ffirst lines)) i)
+                                             macros
+                                             i)
         #_"instruction" (recur (next lines)
                                (concat code
-                                       (let [args (vec (read-string (str \( (first lines) \))))] ;has to be a vector for conj
+                                       (let [args (first lines)] ;has to be a vector for conj
                                          (condp = (count args)
                                            3 args
                                            2 (conj args '(inc ?))
@@ -140,6 +143,7 @@
   ([filename] (run-subleq filename ""))
   ([filename input]
    (drive-subleq (assemble-subleq
-                   (.split (slurp filename)
-                           "\n"))
+                   (tokenize
+                     (.split (slurp filename)
+                             "\n")))
                  input)))

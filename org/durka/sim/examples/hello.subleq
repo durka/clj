@@ -20,6 +20,6 @@
 :count
 . 0
 :text
-. 'Hello, SUBLEQ world!' 0
+. "Hello, SUBLEQ world!" 0
 :ptr
 . text
