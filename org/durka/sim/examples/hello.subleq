@@ -1,5 +1,10 @@
 = TEMP (+ 2 Z)
 = ONE (inc Z)
++ INC address
+ Z
+ ONE Z
+ Z address
+-
 :print
  TEMP
  (- ptr) Z
@@ -14,8 +19,9 @@
  Z Z print      
 :exit
 # inc count one final time, then return count
- ONE Z
- Z count
+# ONE Z
+# Z count
+ > INC count
  count IN
 :count
 . 0

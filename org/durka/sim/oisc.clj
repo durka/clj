@@ -59,6 +59,25 @@
                                  #(.trim %))
                            lines))))
 
+(defn replace-rec
+  "Like clojure.core/replace, but recurses into sub-seqs."
+  [smap coll]
+  (if (vector? coll)
+    (reduce (fn [v i]
+              (let [e (nth v i)]
+                (if (coll? e)
+                  (assoc v i (replace-rec smap e))
+                  (if-let [r (find smap e)]
+                    (assoc v i (val r))
+                    v))))
+            coll (range (count coll)))
+    (map #(if (coll? %)
+            (replace-rec smap %)
+            (if-let [r (find smap %)]
+              (val r)
+              %))
+         coll)))
+
 (defn first-pass
   "First pass of assembler. Takes a seq of vectors of tokens and, expanding macros, counts out labels. Returns a list of integers/labels/expressions and a map of labels to positions."
   [lines]
@@ -70,39 +89,39 @@
     (if (seq lines)
       (condp #((first %1) (second %1) %2) (ffirst lines)
         [= '=] #_"equality" (recur (next lines)
-                                  code
-                                  (assoc toc
-                                         (second (first lines))
-                                         (last (first lines)))
-                                  macros
-                                  i)
-        [= '.] #_"literal" (let [stuff (mapcat #(if (string? %)
-                                                 %
-                                                 (list %))
-                                              (next (first lines)))]
-                            (recur (next lines)
-                                   (concat code stuff)
-                                   toc
+                                   code
+                                   (assoc toc
+                                          (second (first lines))
+                                          (last (first lines)))
                                    macros
-                                   (+ i (count stuff))))
-        [= '+] #_"defmacro" (let [definition (take-while #(not= - (first %)) lines)
-                                 prog (next (drop-while #(not= - (first %)) lines))
-                                 [_ macro & args] definition]
-                             (recur prog
-                                    code
+                                   i)
+        [= '.] #_"literal" (let [stuff (mapcat #(if (string? %)
+                                                  %
+                                                  (list %))
+                                               (next (first lines)))]
+                             (recur (next lines)
+                                    (concat code stuff)
                                     toc
-                                    (assoc macros
-                                           macro {:args args, :code (next definition)})
-                                    i))
+                                    macros
+                                    (+ i (count stuff))))
+        [= '+] #_"defmacro" (let [definition (take-while #(not= '- (first %)) lines)
+                                  prog (next (drop-while #(not= '- (first %)) lines))
+                                  [_ macro & args] (first definition)]
+                              (recur prog
+                                     code
+                                     toc
+                                     (assoc macros
+                                            macro {:args args, :code (next definition)})
+                                     i))
         [= '>] #_"call macro" (let [tokens (next (first lines))
-                                   macro (macros (first tokens))
-                                   args (next tokens)
-                                   expansion (replace (zipmap (:args macro) args) (:code macro))]
-                               (recur (next lines)
-                                      (concat code expansion)
-                                      toc
-                                      macros
-                                      (+ i (count expansion))))
+                                    macro (macros (first tokens))
+                                    args (next tokens)
+                                    expansion (replace-rec (zipmap (:args macro) args) (:code macro))]
+                                (recur (concat expansion (next lines))
+                                       code
+                                       toc
+                                       macros
+                                       i))
         [instance? Keyword] #_"label" (recur (next lines)
                                              code
                                              (assoc toc (.sym (ffirst lines)) i)
