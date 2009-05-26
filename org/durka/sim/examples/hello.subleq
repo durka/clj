@@ -1,0 +1,25 @@
+= TEMP (+ 2 Z)
+= ONE (inc Z)
+:print
+ TEMP
+ (- ptr) Z
+# print *ptr, but check for null terminator first
+ Z TEMP exit
+ Z OUT
+ Z
+ ONE Z
+# inc count and ptr
+ Z ptr
+ Z count
+ Z Z print      
+:exit
+# inc count one final time, then return count
+ ONE Z
+ Z count
+ count IN
+:count
+. 0
+:text
+. 'Hello, SUBLEQ world!' 0
+:ptr
+. text
