@@ -1,10 +1,12 @@
 = TEMP (+ 2 Z)
 = ONE (inc Z)
-+ INC address
+
+Macro INC address
  Z
  ONE Z
  Z address
--
+End
+
 :print
  TEMP
  (- ptr) Z
@@ -18,10 +20,7 @@
  Z count
  Z Z print      
 :exit
-# inc count one final time, then return count
-# ONE Z
-# Z count
- > INC count
+ INC count # inc count one final time, then return count
  count IN
 :count
 . 0

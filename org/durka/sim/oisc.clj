@@ -104,24 +104,24 @@
                                     toc
                                     macros
                                     (+ i (count stuff))))
-        [= '+] #_"defmacro" (let [definition (take-while #(not= '- (first %)) lines)
-                                  prog (next (drop-while #(not= '- (first %)) lines))
-                                  [_ macro & args] (first definition)]
-                              (recur prog
-                                     code
-                                     toc
-                                     (assoc macros
-                                            macro {:args args, :code (next definition)})
-                                     i))
-        [= '>] #_"call macro" (let [tokens (next (first lines))
-                                    macro (macros (first tokens))
-                                    args (next tokens)
-                                    expansion (replace-rec (zipmap (:args macro) args) (:code macro))]
-                                (recur (concat expansion (next lines))
-                                       code
-                                       toc
-                                       macros
-                                       i))
+        [= 'Macro] #_"defmacro" (let [definition (take-while #(not= 'End (first %)) lines)
+                                      prog (next (drop-while #(not= 'End (first %)) lines))
+                                      [_ macro & args] (first definition)]
+                                  (recur prog
+                                         code
+                                         toc
+                                         (assoc macros
+                                                macro {:args args, :code (next definition)})
+                                         i))
+        [find macros] #_"call macro" (let [tokens (first lines)
+                                           macro (macros (first tokens))
+                                           args (next tokens)
+                                           expansion (replace-rec (zipmap (:args macro) args) (:code macro))]
+                                       (recur (concat expansion (next lines))
+                                              code
+                                              toc
+                                              macros
+                                              i))
         [instance? Keyword] #_"label" (recur (next lines)
                                              code
                                              (assoc toc (.sym (ffirst lines)) i)
