@@ -60,20 +60,20 @@
                            lines))))
 
 (defn replace-rec
-  "Like clojure.core/replace, but recurses into sub-seqs."
-  [smap coll]
+  "Like clojure.core/replace, but recurses into sub-colls."
+  [smap coll] ; this function is mostly copied from c.core/replace, just with recursion added
   (if (vector? coll)
-    (reduce (fn [v i]
+    (reduce (fn [v i] ; to preserve vectors, because map will turn it into a list
               (let [e (nth v i)]
-                (if (coll? e)
+                (if (coll? e) ; have to recurse
                   (assoc v i (replace-rec smap e))
-                  (if-let [r (find smap e)]
+                  (if-let [r (find smap e)] ; look for a replacement
                     (assoc v i (val r))
                     v))))
             coll (range (count coll)))
-    (map #(if (coll? %)
+    (map #(if (coll? %) ; have to recurse
             (replace-rec smap %)
-            (if-let [r (find smap %)]
+            (if-let [r (find smap %)] ; look for a replacement
               (val r)
               %))
          coll)))
