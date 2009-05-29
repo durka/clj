@@ -1,0 +1,6 @@
+Clojure=> (require 'org.durka.sim.oisc)
+nil
+Clojure=> (in-ns 'org.durka.sim.oisc)
+#<Namespace org.durka.sim.oisc>
+Clojure=> (run-subleq "examples/hello.subleq")
+["Hello, SUBLEQ world!" 20]
