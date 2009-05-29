@@ -30,7 +30,7 @@
         -in- (inc -out-)
         input-len (count input)] ;TODO: should we just use 0 and 1 for the special registers?
     (loop [mem (vec (concat program
-                            [0 (if (zero? input-len) -1 (nth input 0))]
+                            [0 (if (zero? input-len) -1 (int (first input)))]
                             (vec (range 0 1023)))) ; memory starts out as the program, then the special output cell, then the special input cell, followed by 1024 memory cells filled with the numbers from 0 to 1023
            regs {:ip 0}
            output ""]
@@ -45,9 +45,9 @@
                                       (if (or (>= (mem -in-) input-len)
                                               (neg? (mem -in-)))
                                         -1
-                                        (nth input (mem -in-))) ;TODO: does this need to be casted?
+                                        (int (nth input (mem -in-))))
                                       (mem -in-))
-                               -out- (if (:out regs) 0 (mem -out-)))
+                               -out- 0)
                 regs (dissoc regs :in :out)]
           (recur mem regs output)))))))
 
