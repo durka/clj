@@ -29,11 +29,14 @@
   (let [-out- (count program)
         -in- (inc -out-)
         input-len (count input)] ;TODO: should we just use 0 and 1 for the special registers?
-    (loop [mem (vec (concat program [0 0] (vec (range 0 1023)))) ; memory starts out as the program, then the special output cell, then the special input cell, followed by 1024 memory cells filled with the numbers from 0 to 1023
-           regs {:ip 0, :in true}
+    (loop [mem (vec (concat program
+                            [0 (if (zero? input-len) -1 (nth input 0))]
+                            (vec (range 0 1023)))) ; memory starts out as the program, then the special output cell, then the special input cell, followed by 1024 memory cells filled with the numbers from 0 to 1023
+           regs {:ip 0}
            output ""]
       (let [[mem regs] (subleq -in- -out- mem regs)]
-        (if (neg? (mem -in-))
+        (if (and (:in regs)
+                 (neg? (mem -in-)))
           [output (- -1 (mem -in-))] ; if wrote a negative value to -in-, exit with one less than its absolute value (so write -1 to exit with code 0)
           (let [output (str output
                             (if (:out regs)

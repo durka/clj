@@ -20,7 +20,6 @@ End
  Z count
  Z Z print      
 :exit
- INC count # inc count one final time, then return count
  count IN
 :count
 . 0
