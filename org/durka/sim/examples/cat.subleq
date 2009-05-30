@@ -8,27 +8,41 @@
 = CMP (+ 3 Z)
 = ZZ (+ 4 Z)
 
+; addition of from to to. side effect: zero is cleared
+Macro add from to zero
+ zero
+ from zero
+ zero to
+End
+
+Macro addz from to ; would be nice if I implemented multiple arities for same macro
+ add from to Z
+End
+
+; perform the convolutions necessary to write a specific value to IN
+; side effect: zero is cleared
+Macro write-in from zero
+ add IN from zero
+ from IN
+End
+
+Macro write-inz from
+ write-in from Z
+End
+
 :loop
- IN Z
- Z CMP exit
- Z OUT
+ IN Z ; read a byte of input
+ Z CMP exit ; if EOF, IN=-1, so Z=1, and 1 - -(-1) = 0
+ Z OUT ; if we are still here, copy input to output
  INC count
  Z
  count Z
- ZZ
- IN ZZ
- ZZ Z
- Z IN
- Z
- CMP
- ONE Z
- Z CMP
+ write-in Z ZZ ; ask for the next byte of input
+ CMP ; reset Z=0 and CMP=1
+ addz ONE CMP
  Z Z loop
 :exit
  INC count
- Z
- IN Z
- Z count
- count IN
+ write-inz count
 :count
 . 0
