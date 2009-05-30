@@ -1,6 +1,8 @@
-Clojure=> (require 'org.durka.sim.oisc)
+Assembler and simulator for a simple SUBLEQ OISC.
+
+Clojure=> (require 'org.durka.sim.oisc) # this had better be on the classpath or your computer may explode
 nil
 Clojure=> (in-ns 'org.durka.sim.oisc)
 #<Namespace org.durka.sim.oisc>
-Clojure=> (run-subleq "examples/hello.subleq")
-["Hello, SUBLEQ world!" 20]
+Clojure=> (run-subleq "examples/hello.subleq") # adjust path relative to current directory
+["Hello, SUBLEQ world!" 20] # the second number there is the program's exit code (here a char count)
