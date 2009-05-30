@@ -55,7 +55,7 @@
   "Zeroth pass of assembler. Takes a seq of lines and converts it into a lazy vector of vectors of symbols/lists/keywords. Strips out comments."
   [lines]
   (map #(read-string (str \[ % \]))
-       (remove empty? (map (comp #(let [i (.indexOf % "#")] ;strip comments
+       (remove empty? (map (comp #(let [i (.indexOf % ";")] ;strip comments
                                     (if (not= i -1)
                                       (.substring % 0 i)
                                       %))

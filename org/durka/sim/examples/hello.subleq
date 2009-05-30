@@ -10,12 +10,12 @@ End
 :print
  TEMP
  (- ptr) Z
-# print *ptr, but check for null terminator first
+; print *ptr, but check for null terminator first
  Z TEMP exit
  Z OUT
  Z
  ONE Z
-# inc count and ptr
+; inc count and ptr
  Z ptr
  Z count
  Z Z print      
