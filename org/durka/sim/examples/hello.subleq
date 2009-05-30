@@ -20,6 +20,10 @@ End
  Z count
  Z Z print      
 :exit
+ INC count
+ Z
+ IN Z
+ Z count
  count IN
 :count
 . 0
