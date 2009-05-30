@@ -1,0 +1,34 @@
+ (+ 3 Z) (+ 2 Z) ; store a -1 at TWO and a 1 at THREE and a 0 at FOUR
+ (inc Z) (+ 3 Z)
+ (inc Z) (+ 3 Z)
+ (+ 4 Z)
+
+= ONE (inc Z)
+= INC (+ 2 Z)
+= CMP (+ 3 Z)
+= ZZ (+ 4 Z)
+
+:loop
+ IN Z
+ Z CMP exit
+ Z OUT
+ INC count
+ Z
+ count Z
+ ZZ
+ IN ZZ
+ ZZ Z
+ Z IN
+ Z
+ CMP
+ ONE Z
+ Z CMP
+ Z Z loop
+:exit
+ INC count
+ Z
+ IN Z
+ Z count
+ count IN
+:count
+. 0
