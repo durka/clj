@@ -84,63 +84,61 @@
 (defn first-pass
   "First pass of assembler. Takes a seq of vectors of tokens and, expanding macros, counts out labels. Returns a list of integers/labels/expressions and a map of labels to positions."
   [lines]
-  (loop [lines lines
-         code ()
-         toc {}
-         macros {}
-         i 0]
-    (if (seq lines)
-      (condp #((first %1) (second %1) %2) (ffirst lines)
-        [= '=] #_"equality" (recur (next lines)
-                                   code
-                                   (assoc toc
-                                          (second (first lines))
-                                          (last (first lines)))
-                                   macros
-                                   i)
-        [= '.] #_"literal" (let [stuff (mapcat #(if (string? %)
-                                                  %
-                                                  (list %))
-                                               (next (first lines)))]
-                             (recur (next lines)
-                                    (concat code stuff)
-                                    toc
-                                    macros
-                                    (+ i (count stuff))))
-        [= 'Macro] #_"defmacro" (let [definition (take-while #(not= 'End (first %)) lines)
-                                      prog (next (drop-while #(not= 'End (first %)) lines))
-                                      [_ macro & args] (first definition)]
-                                  (recur prog
-                                         code
-                                         toc
-                                         (assoc macros
-                                                macro {:args args, :code (next definition)})
-                                         i))
-        [find macros] #_"call macro" (let [tokens (first lines)
-                                           macro (macros (first tokens))
-                                           args (next tokens)
-                                           expansion (replace-rec (zipmap (:args macro) args) (:code macro))]
-                                       (recur (concat expansion (next lines))
-                                              code
-                                              toc
-                                              macros
-                                              i))
-        [instance? Keyword] #_"label" (recur (next lines)
-                                             code
-                                             (assoc toc (.sym (ffirst lines)) i)
-                                             macros
-                                             i)
-        #_"instruction" (recur (next lines)
-                               (concat code
-                                       (let [args (first lines)] ;has to be a vector for conj
-                                         (condp = (count args)
-                                           3 args
-                                           2 (conj args '(inc ?))
-                                           1 (vector (first args) (first args) '(inc ?)))))
-                               toc
-                               macros
-                               (+ i 3)))
-      [code toc])))
+  (letfn [(lazy [lines code toc macros i]
+                (lazy-seq
+                  (if (seq lines)
+                    (condp #((first %1) (second %1) %2) (ffirst lines)
+                      [= '=] #_"equality" (lazy (next lines)
+                                                code
+                                                (assoc toc
+                                                       (second (first lines))
+                                                       (last (first lines)))
+                                                macros
+                                                i)
+                      [= '.] #_"literal" (let [stuff (mapcat #(if (string? %)
+                                                                %
+                                                                (list %))
+                                                             (next (first lines)))]
+                                           (lazy (next lines)
+                                                 (concat code stuff)
+                                                 toc
+                                                 macros
+                                                 (+ i (count stuff))))
+                      [= 'Macro] #_"defmacro" (let [definition (take-while #(not= 'End (first %)) lines)
+                                                    prog (next (drop-while #(not= 'End (first %)) lines))
+                                                    [_ macro & args] (first definition)]
+                                                (lazy prog
+                                                      code
+                                                      toc
+                                                      (assoc macros
+                                                             macro {:args args, :code (next definition)})
+                                                      i))
+                      [find macros] #_"call macro" (let [tokens (first lines)
+                                                         macro (macros (first tokens))
+                                                         args (next tokens)
+                                                         expansion (replace-rec (zipmap (:args macro) args) (:code macro))]
+                                                     (lazy (concat expansion (next lines))
+                                                           code
+                                                           toc
+                                                           macros
+                                                           i))
+                      [instance? Keyword] #_"label" (lazy (next lines)
+                                                          code
+                                                          (assoc toc (.sym (ffirst lines)) i)
+                                                          macros
+                                                          i)
+                      #_"instruction" (lazy (next lines)
+                                            (concat code
+                                                    (let [args (first lines)] ;has to be a vector for conj
+                                                      (condp = (count args)
+                                                        3 args
+                                                        2 (conj args '(inc ?))
+                                                        1 (vector (first args) (first args) '(inc ?)))))
+                                            toc
+                                            macros
+                                            (+ i 3)))
+                    [code toc])))]
+         (lazy lines () {} {} 0)))
 
 (defn second-pass
   "Second pass of assembler. Takes a seq of things and fills in all label references (and relative references, and special labels) with numbers. Outputs a list of integers".
@@ -151,10 +149,10 @@
                                      'IN (inc len)
                                      'Z (+ 2 len)})]
     (map (comp int (fn [i thing]
-           (eval `(let ~(vec (concat ['? i]
-                                     more-bindings
-                                     bindings))
-                    ~thing))))
+                     (eval `(let ~(vec (concat ['? i]
+                                               more-bindings
+                                               bindings))
+                              ~thing))))
          (iterate inc 0) code)))
 
 (defn assemble-subleq
