@@ -28,28 +28,30 @@
   [program input]
   (let [-out- (count program)
         -in- (inc -out-)
-        input-len (count input)] ;TODO: should we just use 0 and 1 for the special registers?
-    (loop [mem (vec (concat program
-                            [0 (if (zero? input-len) -1 (int (first input)))]
-                            (vec (range 0 1023)))) ; memory starts out as the program, then the special output cell, then the special input cell, followed by 1024 memory cells filled with the numbers from 0 to 1023
-           regs {:ip 0}
-           output ""]
-      (let [[mem regs] (subleq -in- -out- mem regs)]
-        (if (and (:in regs)
-                 (neg? (mem -in-)))
-          [output (- -1 (mem -in-))] ; if wrote a negative value to -in-, exit with one less than its absolute value (so write -1 to exit with code 0)
-          (let [output (str output
-                            (if (:out regs)
-                              (char (mem -out-))))
-                mem (assoc mem -in- (if (:in regs)
-                                      (if (or (>= (mem -in-) input-len)
-                                              (neg? (mem -in-)))
-                                        -1
-                                        (int (nth input (mem -in-))))
-                                      (mem -in-))
-                               -out- 0)
-                regs (dissoc regs :in :out)]
-          (recur mem regs output)))))))
+        input-len (count input) ;TODO: should we just use 0 and 1 for the special registers?
+        lazy (fn lazy
+               [mem regs output]
+               (lazy-seq
+                 (let [[mem regs] (subleq -in- -out- mem regs)]
+                   (if (and (:in regs)
+                            (neg? (mem -in-)))
+                     [output (- -1 (mem -in-))] ; if wrote a negative value to -in-, exit with one less than its absolute value (so write -1 to exit with code 0)
+                     (let [output (str output
+                                       (if (:out regs)
+                                         (char (mem -out-))))
+                           mem (assoc mem -in- (if (:in regs)
+                                                 (if (or (>= (mem -in-) input-len)
+                                                         (neg? (mem -in-)))
+                                                   -1
+                                                   (int (nth input (mem -in-))))
+                                                 (mem -in-))
+                                      -out- 0)
+                           regs (dissoc regs :in :out)]
+                       (lazy mem regs output))))))]
+    (lazy (vec (concat program
+                       [0 (if (zero? input-len) -1 (int (first input)))]
+                       (vec (range 0 1023)))) ; memory starts out as the program, then the special output cell, then the special input cell, followed by 1024 memory cells filled with the numbers from 0 to 1023
+          {:ip 0} "")))
 
 (defn tokenize
   "Zeroth pass of assembler. Takes a seq of lines and converts it into a lazy vector of vectors of symbols/lists/keywords. Strips out comments."
