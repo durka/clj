@@ -1,0 +1,26 @@
+My solution currently consists of two files. Most of my solution is in Clojure, except for the part I gave up on and wrote in C++ because of its greater ability for bit-twiddling.
+
+To run this you will need Clojure (from www.clojure.org) and the contrib libraries (specifically clojure.contrib.shell-out). I developed against the latest git versions of each, but 1.0 _should_ work.
+To, for example, to run exercise 1002, do this at the REPL (assuming my icfp.clj is in the current directory):
+user=> (load-file "icfp.clj")
+user=> (in-ns 'org.durka.icfp09.icfp)
+org.durka.icfp09.icfp=> (def *dir* "/path/to/the/*.obf/files/and/where/the/*.osf/files/will/go")
+org.durka.icfp09.icfp=> (run-simultion 1002 "bin1.obf" "hohmann2.osf" (partial hohmann-controller 1002))
+
+decode.cpp is a disassembler; it takes the solution binaries and outputs the initial data memory and then a list of instructions. (Outside the disassembler, no special distinction between S- and D-type instructions is made.) It was easiest to write this in C++ because I could just set up a mess of unions and structs with bitfields and basically memcpy the binary in. Luckily I am developing on a little-endian machine.'
+
+icfp.clj contains everything else. There are a few convenience physics functions, an interpreter for the assembly that comes from decode.c, a solution binary encoder (I managed to write that in Clojure instead of C++, so having learned a bit of java.nio I could perhaps go back and write the decoder in Clojure), the satellite controllers, and glue methods to run the simulations.
+
+To run a simulation, you have to load up icfp.clj at the Clojure REPL and run a command like
+org.durka.icfp09.icfp=> (run-simulation 1004 "bin1.obf" "hohmann4.osf" (partial hohmann-controller 1004))
+providing filenames for the solution binary and the submission binary, and a controller callback (the last argument). A whole bunch of output will scroll by, and then presumably a solution trace will be left in the give output file name. The controller is called every time before the binary is interpreted, and it provides the inputs for the next timestep. The controller is also allowed a map (key-value pairs) of state, which it returns (and it is merged with any old state, with new values for the same keys overwriting the old) and then is also passed to it by run-simulation. run-simulation keeps going until the controller returns nil or false. At that point it quits and turns over the simulation trace to encode-binary.
+
+The controllers currently implemented are:
+    observer-controller
+        This controler does absolutely nothing. It always gives zero for both actuator inputs. However, it outputs the satellite's x- and y-position (as reported by the Hohmann binary) in CSV format. I used this to see what was going on in the beginning.
+    interactive-controller
+        This controller displays all relevant information to the user, and asks questions to decode what to do next. I mostly used this to test encode-binary.
+    hohmann-controller
+        This is a general solution for the Hohmann problem. It waits a couple of timesteps to ascertain its position and direction, then calculates the delta-Vs and time necessary to perform a Hohmann transfer between the orbits. It executes the first burn (using trigonometry to fire the engines in the right direction) and saves away the time and power for the second burn. When that time is reached, it again calculates its direction and executes the second burn. This controller works for all of 1001-1004.
+    scripted-hohmann
+        This is a solution for Hohmann 1001 with the numbers hardcoded. I initially thought that I was crashing into Earth because I was starting the burn too late and the elliptical orbit was going inside the original orbit. But experimenting with scripted-hohmann I found out that I had merely switched the signs, and switching the signs in hohmann-controller fixed it (with a very very slightly higher score for 1001, too).
