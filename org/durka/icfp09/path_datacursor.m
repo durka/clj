@@ -1,0 +1,16 @@
+function output_txt = path_datacursor(obj,event_obj)
+% Display the position of the data cursor
+% obj          Currently not used (empty)
+% event_obj    Handle to event object
+% output_txt   Data cursor text string (string or cell array of strings).
+
+    pos = get(event_obj,'Position');
+    indx = get(event_obj,'DataIndex');
+    extra = get(get(datacursormode(gcf), 'Figure'), 'UserData');
+    output_txt = {...
+        ['t: ',num2str(indx,4) ' seconds'],...
+        ['X: ',num2str(pos(1),4) ' meters'],...
+        ['Y: ',num2str(pos(2),4) ' meters'],...
+        ['Radius: ',num2str(sqrt(pos(1)^2+pos(2)^2),4) 'meters'],...
+        extra{indx}};
+end
