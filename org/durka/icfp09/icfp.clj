@@ -1,8 +1,11 @@
 (ns org.durka.icfp09.icfp
-  (:use clojure.contrib.shell-out)
-  (:import [java.io FileOutputStream]
+  (:use clojure.contrib.shell-out
+        clojure.contrib.str-utils
+        clojure.contrib.duck-streams
+     penumbra.opengl penumbra.matrix penumbra.window)
+  (:import [java.io RandomAccessFile FileOutputStream]
            [java.nio ByteBuffer ByteOrder]
-           [java.nio.channels FileChannel]))
+           [java.nio.channels FileChannel FileChannel$MapMode]))
 
 (def *dir* "/Users/alex/Programming/clojure/clj/org/durka/icfp09")
 
@@ -48,6 +51,28 @@
       (Math/sqrt (/ (Math/pow (+ r1 r2) 3)
                     (* 8 +G+ +Me+))))])
 
+(defn bielliptic
+  "Calculates the instantaneous velocity changes necessary to perform a bi-elliptic transfer from a circular orbit at r1 to one at r2, using rb as the intermediary apogee. Returns a vector with three elements: the first velocity change, the second, the third, and the times in between."
+  [r1 r2 rb]
+  (let [a1 (/ (+ r1 rb)
+              2)
+        a2 (/ (+ rb r2)
+              2)]
+    [(- (Math/sqrt (- (* 2 +G+ +Me+ (/ r1))
+                      (* +G+ +Me+ (/ a1))))
+        (Math/sqrt (* +G+ +Me+ (/ r1))))
+     (- (Math/sqrt (- (* 2 +G+ +Me+ (/ rb))
+                      (* +G+ +Me+ (/ a2))))
+        (Math/sqrt (- (* 2 +G+ +Me+ (/ rb))
+                      (* +G+ +Me+ (/ a1)))))
+     (- (Math/sqrt (* +G+ +Me+ (/ r2)))
+        (Math/sqrt (- (* 2 +G+ +Me+ (/ r2))
+                      (* +G+ +Me+ (/ a2)))))
+     (* Math/PI (Math/sqrt (/ (Math/pow a1 3)
+                              (* +G+ +Me+))))
+     (* Math/PI (Math/sqrt (/ (Math/pow a2 3)
+                              (* +G+ +Me+))))]))
+
 (defn nth-in
   [m & ks]
   (reduce nth m ks))
@@ -70,6 +95,26 @@
                           "\n")]
     [(read-string (str "(" data ")"))
      (map #(read-string (str "(" % ")")) instrs)]))
+
+(defn unpack-submission
+  [osf]
+  (with-open [file (.getChannel (RandomAccessFile. (str *dir* "/" osf) "r"))]
+    (let [buf (.order
+                (.map file FileChannel$MapMode/READ_ONLY 0 (.size file))
+                ByteOrder/LITTLE_ENDIAN)]
+      (.getInt buf) ; 0xCAFEBABE
+      {:team (.getInt buf)
+       :challenge (.getInt buf)
+       :frames (loop [acc (sorted-map)]
+                 (let [t (.getInt buf)
+                       k (.getInt buf)]
+                   (if (zero? k)
+                     (assoc acc t {})
+                     (recur (assoc acc t (apply hash-map
+                                                (apply concat
+                                                       (take k (repeatedly
+                                                                 (fn [] [(.getInt buf)
+                                                                         (.getDouble buf)]))))))))))})))
 
 (defn encode-binary
   [filename scenario inputs]
@@ -166,7 +211,7 @@
                      status
                      out)
         'Input (recur (next code)
-                      (assoc mem pc (in (nth-in code 0 1)))
+                      (assoc mem pc (in (nth-in code 0 1) (double 0)))
                       (inc pc)
                       status
                       out))
@@ -188,6 +233,117 @@
                              (inc timestep)))
                     (reverse hist)))]
     (encode-binary outfile scenario history)))
+
+(defn textual-log
+  [hist]
+  (printf "Team #%d competing in challenge #%d\n" (:team hist) (:challenge hist))
+  (doseq [[t inputs] (:frames hist)]
+    (printf "\tClock reads %d seconds\n" t)
+    (if (seq inputs)
+      (doseq [[addr value] inputs]
+        (printf "\t\tInput port 0x%X = %g\n" addr value))
+      (println "\t\tSimulation finished"))))
+
+(def orbit (atom nil))
+(def rot-x (ref -45))
+(def rot-y (ref 30))
+
+(defn draw-earth
+  [r]
+  (material 1 0 0 1)
+  (draw-line-loop
+    (doseq [phi   (map #(* 1/180 Math/PI %) (range 180))
+            theta (map #(* 10 1/180 Math/PI %) (range 36))]
+      (material (Math/abs (- (/ phi (* 0.5 Math/PI)) 1)) (Math/abs (- (/ theta Math/PI) 1)) 1 1)
+      (vertex (* r (Math/sin phi) (Math/sin theta))
+              (* r (Math/cos phi) (Math/sin theta))
+              (* r (Math/cos theta))))))
+
+(defn draw-message
+  []
+  (write "Hokay, so: here's the Earth!" 0 1))
+
+(defn mouse-drag [[dx dy] _]
+  (dosync
+    (commute rot-x + dy)
+    (commute rot-y + dx)))
+
+(defn gl-init
+  []
+  (enable :auto-normal)
+  (enable :normalize)
+  (enable :depth-test)
+  (shade-model :smooth)
+  (set-display-list orbit (draw-earth 0.3)))
+
+(defn replay
+  [bin hist]
+  (print (format "Team #%d competing in challenge #%d\n" (:team hist) (:challenge hist)))
+  (let [[data code] (unpack-executable bin)
+        frames (:frames hist)]
+    (loop [t 0
+           mem data
+           status false
+           out {}
+           in {}]
+      (print (format "Clock reads %d seconds\n" t))
+      (let [ins (frames t in)] ; the frame's inputs, unless it doesn't have any, in which case the previous frame's inputs
+        (if (and (not-empty ins) (not= ins in))
+          (doseq [[addr value] ins]
+            (print (format "\t\t\tInput port 0x%X = %g\n" addr value))))
+        (let [[mem status outs] (simulate mem status code ins)]
+          (if (not= out outs)
+            (doseq [[addr value] (into (sorted-map) outs)]
+              (print (format "\t\t\tOutput port 0x%X = %g\n" addr (double value)))))
+          (if (not-empty ins)
+            (recur (inc t)
+                   mem
+                   status
+                   outs
+                   ins) ; preserve these inputs in case they remain in effect for the next frame
+            (println "\t\tSimulation finished")))))))
+
+(defn csv-replay
+  [bin hist out cols]
+  "Cols is a map of port numbers to output spreadsheet columns. Positive numbers are interpreted as referring to input ports, while negative numbers are for output. Time is automatically prepended as the first column."
+  (with-open [csv (writer (str *dir* "/" out))]
+    (.println csv (str-join "," (concat ["Time"] (vals cols))))
+    (let [[data code] (unpack-executable bin)
+          frames (:frames hist)]
+      (loop [t 0
+             mem data
+             status false
+             out {}
+             in {}]
+        (let [ins (frames t in)
+              [mem status outs] (simulate mem status code ins)]
+          (.println csv (str-join "," (concat [t] (for [port (keys cols)]
+                                                    (if (pos? port)
+                                                      (ins port "")
+                                                      (outs (- port) ""))))))
+          (if (not-empty ins)
+            (recur (inc t)
+                   mem
+                   status
+                   outs
+                   ins)))))))
+
+(defn gl-replay
+  [bin hist]
+  (start {:init gl-init
+          :display (fn [d t]
+                     (translate 0 0 -2)
+                     (rotate @rot-x 1 0 0)
+                     (rotate @rot-y 0 1 0)
+                     (set-light-position 0 [1 1 1 0])
+                     (call-display-list @orbit))
+          :reshape (fn [x y w h]
+                     (frustum-view 50 (/ (double w)
+                                         h)
+                                   0.1
+                                   100)
+                     (load-identity))
+          :mouse-drag mouse-drag}))
 
 (defn interactive-controller
   [outputs timestep state]
@@ -266,15 +422,49 @@
        nil])
     nil))
 
-(comment(defn decode-instruction
-  [& bytes]
-  (if (> 3 (Integer/numberOfLeadingZeros (first bytes))) ; S-type
-    (let [instr (nth bytes 0)
-          imm (concat-nums (nth bytes 1)
-                           (bit-shift-right (nth bytes 2) 6))
-          r1 (concat-nums (bit-and (nth bytes 2) (bit-not 0xC0))
-                          (nth bytes 3))]
-      [instr imm r1])
-    ; D-type
-    (let [instr (bit-shift-right (nth bytes 0) 4)
-          r1 (concat-nums (- (nth bytes 0) instr))]))))
+
+(defn hohmann-bielliptic
+  [scenario factor outputs timestep state]
+  (println (str "Timestep #" timestep ", radius: " (radius (outputs 2 0) (outputs 3 0)) ", outputs: " outputs))
+  (if (zero? (outputs 0 0))
+    (condp = timestep
+      0 [{2 0
+          3 0
+          0x3E80 scenario}
+         nil]
+      1 [{2 0
+          3 0
+          0x3E80 scenario}
+         {:x (outputs 2) :y (outputs 3)}]
+      2 (let [dir (Math/atan2 (- (outputs 3) (state :y))
+                              (- (outputs 2) (state :x)))
+              transfer (bielliptic (radius (outputs 2) (outputs 3)) (outputs 4) (* factor (outputs 4)))]
+          [{2 (* -1 (transfer 0) (Math/cos dir))
+            3 (* -1 (transfer 0) (Math/sin dir))
+            0x3E80 scenario}
+           {:transfer transfer}])
+      (if-let [t (state :transfer)] (Math/round (t 3))) [{2 0
+                                                          3 0
+                                                          0x3E80 scenario}
+                                                         {:x (outputs 2) :y (outputs 3)}]
+      (if-let [t (state :transfer)] (Math/round (inc (t 3)))) (let [dir (Math/atan2 (- (outputs 3) (state :y))
+                                                                                    (- (outputs 2) (state :x)))]
+                                                                [{2 (* -1 ((state :transfer) 1) (Math/cos dir))
+                                                                  3 (* -1 ((state :transfer) 1) (Math/sin dir))
+                                                                  0x3E80 scenario}
+                                                                 nil])
+      (if-let [t (state :transfer)] (Math/round (+ (t 3) (t 4)))) [{2 0
+                                                                    3 0
+                                                                    0x3E80 scenario}
+                                                                   {:x (outputs 2) :y (outputs 3)}]
+      (if-let [t (state :transfer)] (Math/round (+ (t 3) (t 4) 1))) (let [dir (Math/atan2 (- (outputs 3) (state :y))
+                                                                                          (- (outputs 2) (state :x)))]
+                                                                      [{2 (* -1 ((state :transfer) 2) (Math/cos dir))
+                                                                        3 (* -1 ((state :transfer) 2) (Math/sin dir))
+                                                                        0x3E80 scenario}
+                                                                       nil])
+      [{2 0
+        3 0
+        0x3E80 scenario}
+       nil])
+    nil))
