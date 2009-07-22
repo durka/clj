@@ -1,6 +1,7 @@
 (ns org.durka.icfp09.icfp
   (:use clojure.contrib.shell-out
         clojure.contrib.str-utils
+        clojure.contrib.seq-utils
         clojure.contrib.duck-streams
      penumbra.opengl penumbra.matrix penumbra.window)
   (:import [java.io RandomAccessFile FileOutputStream]
@@ -50,6 +51,23 @@
    (* Math/PI
       (Math/sqrt (/ (Math/pow (+ r1 r2) 3)
                     (* 8 +G+ +Me+))))])
+
+(defn find-biggest-transfer
+  "Finds the most extravagant combination of Hohmann transfers (current to detour, back to current, back to detour, finally to target) possible given the current orbit radius, the target radius, and the available fuel. Starts with a seed value for a detour radius to which to transfer first, and performs a sort of binary search to use the most fuel possible."
+  [current target detour fuel increment epsilon]
+  (let [trans1 (hohmann current detour)
+        trans2 (hohmann detour target)
+        need (apply + (map #(Math/abs %)
+                           [(first trans1) (second trans1)
+                            (first trans1) (second trans1)
+                            (first trans1) (second trans1)
+                            (first trans2) (second trans2)]))]
+    (prn trans1 trans2 detour increment need)
+    (if (> fuel need)
+      (if (> epsilon (- fuel need))
+        [trans1 trans2]
+        (find-biggest-transfer current target (+ detour increment) fuel increment epsilon))
+      (find-biggest-transfer current target (- detour increment) fuel (* 0.9 increment) epsilon))))
 
 (defn bielliptic
   "Calculates the instantaneous velocity changes necessary to perform a bi-elliptic transfer from a circular orbit at r1 to one at r2, using rb as the intermediary apogee. Returns a vector with three elements: the first velocity change, the second, the third, and the times in between."
@@ -468,3 +486,71 @@
         0x3E80 scenario}
        nil])
     nil))
+
+
+(defn return-second
+  [a b]
+  b)
+
+(defn return-always
+  [a & _]
+  a)
+
+(defn do-vector
+  [[f arg1] arg2]
+  (f arg1 arg2))
+
+(defmacro controller
+  [name & cases]
+  `(let
+     [state# (atom {})
+      inputs# (atom {})
+      ~'save (fn [k# fun# & args#]
+               (swap! state# assoc k# (apply fun# (@state# k#) args#)))
+      ~'recall (fn [k#]
+                 (@state# k#))
+      ~'schedule (fn [t# dV# & pairs#]
+                   (~'save :burns assoc (int (Math/round (double t#))) dV#)
+                   (if pairs#
+                     (recur (+ t# (first pairs#))
+                            (second pairs#)
+                            (nnext pairs#))))
+      ~'do! (fn [port# value#]
+              (swap! inputs# assoc port# value#))]
+     (defn ~name
+       [scenario# ~'outputs timestep# st#]
+       (println (str "Timestep #" timestep# ", radius: " (radius (~'outputs 2 0) (~'outputs 3 0)) ", outputs: " ~'outputs ", " (count (~'recall :burns)) " burns left"))
+       (swap! state# (partial return-always st#))
+       (swap! inputs# empty)
+       (when (zero? (~'outputs 0 0))
+         (condp do-vector timestep#
+           ~@(map (fn [elem i]
+                    (if (even? i) ;change the numbers into [= #] pairs
+                      [= elem]
+                      elem))
+                  cases (iterate inc 0))
+           [contains? (~'recall :burns)] (let [dir# (Math/atan2 (- (~'outputs 3) (~'recall :y))
+                                                                (- (~'outputs 2) (~'recall :x)))]
+                                           (~'do! 2 (* -1 ((~'recall :burns) timestep#) (Math/cos dir#)))
+                                           (~'do! 3 (* -1 ((~'recall :burns) timestep#) (Math/sin dir#)))
+                                           (~'save :burns dissoc timestep#))
+           (do
+             (~'do! 2 0)
+             (~'do! 3 0)))
+         (~'save :x return-second (~'outputs 2))
+         (~'save :y return-second (~'outputs 3))
+         (~'do! 0x3E80 scenario#)
+       [@inputs# @state#]))))
+
+(controller hohmann-double
+            1 (let [[trans1 trans2] (find-biggest-transfer (radius (outputs 2) (outputs 3)) (outputs 4) (* 2 (outputs 4)) (outputs 1) 1e6 10)]
+                (schedule 2               (nth trans1 0)      ; launch from home to detour x1
+                          (nth trans1 2)  (nth trans1 1)      ; stop at detour x1
+                          100             (- (nth trans1 1))  ; launch back home x1
+                          (nth trans1 2)  (- (nth trans1 0))  ; stop at home x1
+                          100             (nth trans1 0)      ; launch from home to detour x2
+                          (nth trans1 2)  (nth trans1 1)      ; stop at detour x2
+                          100             (nth trans2 0)      ; launch from detour to target
+                          (nth trans2 2)  (nth trans2 1))     ; stop at target
+                (do! 2 0)
+                (do! 3 0)))
